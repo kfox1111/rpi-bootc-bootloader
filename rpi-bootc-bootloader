@@ -208,7 +208,7 @@ sync_bootloader() {
 			mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
 			process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
 		else
-			echo "not staging $BOOTVER $OTHERVER $TRYBOOTVER $TRYOTHERVER"
+			echo "not staging $BOOTVER $OTHERVER $NEXTBOOTVER $NEXTOTHERVER"
 		fi
 		setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
 	fi
