@@ -154,7 +154,7 @@ EOF
 		exit 1
 	fi
 	if [ ! -d "$BOOTEDDIR" ]; then
-		echo Couldnt find the booted image dir
+		echo "Couldn't find the booted image dir"
 		exit 1
 	fi
 
@@ -177,7 +177,6 @@ EOF
 		rm -rf "$TMPMNT/bootc/entries/ostree-1"
 		mkdir -p "$TMPMNT/bootc/entries/ostree-1" || exit 1
 		process_path "/boot/loader/entries/ostree-1.conf" "$TMPMNT/bootc/entries/ostree-1"
-		setup_bootloader || exit 1
 		BOOTVER=1
 		OTHERVER=1
 		NEXTBOOTVER=1
