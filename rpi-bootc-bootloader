@@ -2,7 +2,6 @@
 
 VERSION="v0.0.1"
 TMPMNT=/tmp/mnt
-MNTDEV=/dev/nvme0n1p1
 TRYBOOT=0
 WATCHDOG="dtparam=watchdog=on"
 
@@ -64,8 +63,8 @@ process_path() {
 	echo "dtbtree: $DTBTREE"
 	cp -r "$DTBTREE"/* "$LOADERDIR"
 	BOOTCDIR=/usr/lib/modules/$(ls /usr/lib/modules/ | head -n 1)
-	if [ -f "$BOOTDIR/pi-config.txt" ]; then
-		cp "$BOOTDIR/pi-config.txt" "$LOADERDIR"
+	if [ -f "$BOOTDIR/rpi-config.txt" ]; then
+		cp "$BOOTDIR/rpi-config.txt" "$LOADERDIR"
 	fi
 }
 
@@ -79,7 +78,7 @@ include config-bootc-common.txt
 
 [all]
 os_prefix=bootc/entries/ostree-$OTHERVER/
-include bootc/entries/ostree-$OTHERVER/pi-config.txt
+include bootc/entries/ostree-$OTHERVER/rpi-config.txt
 
 [all]
 kernel=vmlinuz
@@ -90,20 +89,20 @@ EOF
 [all]
 os_prefix=bootc/entries/ostree-$BOOTVER/
 [gpio6=1]
-include bootc/entries/ostree-$BOOTVER/pi-config.txt
+include bootc/entries/ostree-$BOOTVER/rpi-config.txt
 [all]
 [gpio6=0]
 EOF
 	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt"
 	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
 os_prefix=bootc/entries/ostree-$OTHERVER/
-include bootc/entries/ostree-$OTHERVER/pi-config.txt
+include bootc/entries/ostree-$OTHERVER/rpi-config.txt
 [all]
 EOF
 	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt"
 #FIXME rename this to just config.txt later
-	if [ ! -f "$TMPMNT/config-bootc-bootorder.txt" ]; then
-		cat > "$TMPMNT/config-bootc-bootorder.txt" <<EOF
+	if [ ! -f "$TMPMNT/config.txt" ]; then
+		cat > "$TMPMNT/config.txt" <<EOF
 # Do not edit. This is an Automatically generated config file.
 # Put your own customization in your image or config-bootc-common.txt
 
@@ -132,6 +131,18 @@ EOF
 }
 
 sync_bootloader() {
+	if [ -z "$MNTDEV" ]; then
+		echo "MNTDEV is not defined. Searching for /sysroot..."
+
+		RAW_DEV=$(mount | awk '$3 == "/sysroot" {print $1}')
+
+		if [ -z "$RAW_DEV" ]; then
+			echo "Error: Could not find a device mounted at /sysroot." >&2
+			exit 1
+		fi
+
+		MNTDEV=$(echo "$RAW_DEV" | sed -E 's/[0-9]+$/1/')
+	fi
 	mkdir -p "$TMPMNT"
 
 	ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
