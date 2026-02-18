@@ -46,8 +46,8 @@ The tryboot setting can be configured in three ways (in order of precedence):
 
 1. **Command-line flag** (highest priority):
    ```
-   rpi-bootc-bootloader sync --tryboot 0
-   rpi-bootc-bootloader sync --tryboot 1
+   rpi-bootc-bootloader sync --tryboot    # Enable tryboot mode (TRYBOOT=1)
+   rpi-bootc-bootloader sync              # Use config file or default
    ```
 
 2. **Configuration file** at `/etc/rpi-bootc-bootloader/tryboot.conf`:

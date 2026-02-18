@@ -10,8 +10,8 @@ show_help() {
 Usage: rpi-bootc-bootloader <command> [options]
 
 Commands:
-  sync [--tryboot <0|1>]  Synchronize bootloader configuration with bootc status
-                          --tryboot: Enable (1) or disable (0) tryboot mode
+  sync [--tryboot]        Synchronize bootloader configuration with bootc status
+                          --tryboot: Enable tryboot mode for safer rollback
                                      Overrides /etc/rpi-bootc-bootloader/tryboot.conf
   version                 Display version information
   help                    Display this help message
@@ -269,23 +269,8 @@ case "${1:-}" in
 		while [ $# -gt 0 ]; do
 			case "$1" in
 				--tryboot)
-					if [ $# -lt 2 ]; then
-						echo "Error: --tryboot requires argument 0 or 1" >&2
-						exit 1
-					fi
-					# Check if next argument looks like a flag
-					case "$2" in
-						-*)
-							echo "Error: --tryboot requires argument 0 or 1, got '$2'" >&2
-							exit 1
-							;;
-					esac
-					if [ "$2" != "0" ] && [ "$2" != "1" ]; then
-						echo "Error: --tryboot requires argument 0 or 1, got '$2'" >&2
-						exit 1
-					fi
-					TRYBOOT_ARG="$2"
-					shift 2
+					TRYBOOT_ARG="1"
+					shift
 					;;
 				*)
 					echo "Error: Unknown option '$1'" >&2
