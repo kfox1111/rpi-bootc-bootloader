@@ -2,18 +2,19 @@
 
 VERSION="v0.0.1"
 TMPMNT=/tmp/mnt
-TRYBOOT=0
 WATCHDOG="dtparam=watchdog=on"
 
 show_help() {
 	local exit_code="${1:-0}"
 	cat <<EOF
-Usage: rpi-bootc-bootloader <command>
+Usage: rpi-bootc-bootloader <command> [options]
 
 Commands:
-  sync       Synchronize bootloader configuration with bootc status
-  version    Display version information
-  help       Display this help message
+  sync [--tryboot <0|1>]  Synchronize bootloader configuration with bootc status
+                          --tryboot: Enable (1) or disable (0) tryboot mode
+                                     Overrides /etc/rpi-bootc-bootloader/tryboot.conf
+  version                 Display version information
+  help                    Display this help message
 
 EOF
 	exit "$exit_code"
@@ -22,6 +23,23 @@ EOF
 show_version() {
 	echo "$VERSION"
 	exit 0
+}
+
+load_tryboot_config() {
+	local config_file="/etc/rpi-bootc-bootloader/tryboot.conf"
+	if [ -f "$config_file" ]; then
+		# Source the config file to load TRYBOOT variable
+		# Use a subshell to avoid polluting the environment
+		local config_tryboot=$(grep '^TRYBOOT=' "$config_file" | sed 's/^TRYBOOT=//')
+		if [ -n "$config_tryboot" ]; then
+			if [ "$config_tryboot" = "0" ] || [ "$config_tryboot" = "1" ]; then
+				echo "$config_tryboot"
+				return 0
+			fi
+		fi
+	fi
+	# Return default value
+	echo "0"
 }
 
 conf_to_ostree() {
@@ -228,6 +246,33 @@ sync_bootloader() {
 # Main command dispatcher
 case "${1:-}" in
 	sync)
+		shift  # Remove 'sync' from arguments
+		# Parse --tryboot flag
+		TRYBOOT_ARG=""
+		while [ $# -gt 0 ]; do
+			case "$1" in
+				--tryboot)
+					if [ -z "$2" ] || [ "$2" != "0" -a "$2" != "1" ]; then
+						echo "Error: --tryboot requires argument 0 or 1" >&2
+						exit 1
+					fi
+					TRYBOOT_ARG="$2"
+					shift 2
+					;;
+				*)
+					echo "Error: Unknown option '$1'" >&2
+					show_help 1
+					;;
+			esac
+		done
+		
+		# Determine TRYBOOT value: CLI flag > config file > default
+		if [ -n "$TRYBOOT_ARG" ]; then
+			TRYBOOT="$TRYBOOT_ARG"
+		else
+			TRYBOOT=$(load_tryboot_config)
+		fi
+		
 		sync_bootloader
 		;;
 	version)
