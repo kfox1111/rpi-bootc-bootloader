@@ -38,8 +38,9 @@ load_tryboot_config() {
 			if [ "${line#TRYBOOT=}" != "$line" ]; then
 				# Extract value after TRYBOOT=
 				local value="${line#TRYBOOT=}"
-				# Strip whitespace
-				value=$(echo "$value" | tr -d '[:space:]')
+				# Strip whitespace using parameter expansion
+				value="${value#"${value%%[![:space:]]*}"}"  # Remove leading whitespace
+				value="${value%"${value##*[![:space:]]}"}"  # Remove trailing whitespace
 				# Strict validation: only accept exactly "0" or "1"
 				if [ "$value" = "0" ] || [ "$value" = "1" ]; then
 					echo "$value"
@@ -261,22 +262,23 @@ case "${1:-}" in
 		shift  # Remove 'sync' from arguments
 		# Parse --tryboot flag
 		TRYBOOT_ARG=""
+		TRYBOOT_ERROR="Error: --tryboot requires argument 0 or 1"
 		while [ $# -gt 0 ]; do
 			case "$1" in
 				--tryboot)
 					if [ $# -lt 2 ]; then
-						echo "Error: --tryboot requires argument 0 or 1" >&2
+						echo "$TRYBOOT_ERROR" >&2
 						exit 1
 					fi
 					# Check if next argument looks like a flag
 					case "$2" in
 						-*)
-							echo "Error: --tryboot requires argument 0 or 1, got '$2'" >&2
+							echo "$TRYBOOT_ERROR, got '$2'" >&2
 							exit 1
 							;;
 					esac
 					if [ "$2" != "0" ] && [ "$2" != "1" ]; then
-						echo "Error: --tryboot requires argument 0 or 1" >&2
+						echo "$TRYBOOT_ERROR" >&2
 						exit 1
 					fi
 					TRYBOOT_ARG="$2"
