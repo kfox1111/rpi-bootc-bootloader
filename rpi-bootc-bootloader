@@ -135,7 +135,6 @@ include bootc/entries/ostree-$OTHERVER/rpi-config.txt
 [all]
 EOF
 	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt"
-#FIXME rename this to just config.txt later
 	if [ ! -f "$TMPMNT/config.txt" ]; then
 		cat > "$TMPMNT/config.txt" <<EOF
 # Do not edit. This is an Automatically generated config file.
