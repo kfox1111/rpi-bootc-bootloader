@@ -1,11 +1,29 @@
 #!/bin/bash
 
+VERSION="v0.0.1"
 TMPMNT=/tmp/mnt
 MNTDEV=/dev/nvme0n1p1
 TRYBOOT=0
 WATCHDOG="dtparam=watchdog=on"
 
-mkdir -p $"TMPMNT"
+show_help() {
+	local exit_code="${1:-0}"
+	cat <<EOF
+Usage: rpi-bootc-bootloader <command>
+
+Commands:
+  sync       Synchronize bootloader configuration with bootc status
+  version    Display version information
+  help       Display this help message
+
+EOF
+	exit "$exit_code"
+}
+
+show_version() {
+	echo "$VERSION"
+	exit 0
+}
 
 conf_to_ostree() {
 	LOADERFILE="$1"
@@ -113,83 +131,109 @@ EOF
 	fi
 }
 
-ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
+sync_bootloader() {
+	mkdir -p "$TMPMNT"
 
-if [ "x$ENTRIES" != "x1" -a "x$ENTRIES" != "x2" ]; then
-	echo "Failed to find any entries"
-	exit 1
-fi
+	ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
 
-STAGING=$(bootc status --format json | jq '.status.staged != null')
-if [ "x$STAGING" != "xtrue" -a "x$STAGING" != "xfalse" ]; then
-	echo Unknown staging state
-	exit 1
-fi
-
-BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
-BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
-if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
-	echo Unknown booted state
-	exit 1
-fi
-if [ ! -d "$BOOTEDDIR" ]; then
-	echo Couldnt find the bootted image dir
-	exit 1
-fi
-
-echo "Entries: $ENTRIES"
-
-cleanup() {
-  EXIT_CODE=$?
-  umount "$TMPMNT" || true
-  exit "$EXIT_CODE"
-}
-
-trap cleanup EXIT
-
-mount "$MNTDEV" "$TMPMNT" || exit 1
-
-mkdir -p "$TMPMNT/bootc/entries"
-if [ "x$ENTRIES" == "x1" ]; then
-	DIR=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
-	test $? -eq 0 || exit 1
-	rm -rf "$TMPMNT/bootc/entries/ostree-1"
-	mkdir -p "RTMPMNT/bootc/entries/ostree-1" || exit 1
-	process_path "/boot/loader/entries/ostree-1.conf" "$TMPMNT/bootc/entries/ostree-1"
-	setup_bootloader || exit 1
-	BOOTVER=1
-	OTHERVER=1
-	NEXTBOOTVER=1
-	NEXTOTHERVER=1
-	setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
-elif [ "x$ENTRIES" == "x2" ]; then
-	DIR1=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
-	test $? -eq 0 || exit 1
-	DIR2=$(conf_to_ostree "/boot/loader/entries/ostree-2.conf")
-	test $? -eq 0 || exit 1
-	if [ "$BOOTEDDIR" != "$DIR1" -a "$BOOTEDDIR" != "$DIR2" ]; then
-		echo Could not find config for our current os
+	if [ "x$ENTRIES" != "x1" -a "x$ENTRIES" != "x2" ]; then
+		echo "Failed to find any entries" >&2
 		exit 1
 	fi
-	BOOTVER=1
-	OTHERVER=2
-	if [ "$BOOTEDDIR" == "$DIR2" ]; then
-		BOOTVER=2
+
+	STAGING=$(bootc status --format json | jq '.status.staged != null')
+	if [ "x$STAGING" != "xtrue" -a "x$STAGING" != "xfalse" ]; then
+		echo "Unknown staging state" >&2
+		exit 1
+	fi
+
+	BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
+	BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
+	if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
+		echo "Unknown booted state" >&2
+		exit 1
+	fi
+	if [ ! -d "$BOOTEDDIR" ]; then
+		echo "Couldn't find the booted image dir" >&2
+		exit 1
+	fi
+
+	echo "Entries: $ENTRIES"
+
+	cleanup() {
+	  EXIT_CODE=$?
+	  umount "$TMPMNT" || true
+	  exit "$EXIT_CODE"
+	}
+
+	trap cleanup EXIT
+
+	mount "$MNTDEV" "$TMPMNT" || exit 1
+
+	mkdir -p "$TMPMNT/bootc/entries"
+	if [ "x$ENTRIES" == "x1" ]; then
+		DIR=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
+		test $? -eq 0 || exit 1
+		rm -rf "$TMPMNT/bootc/entries/ostree-1"
+		mkdir -p "$TMPMNT/bootc/entries/ostree-1" || exit 1
+		process_path "/boot/loader/entries/ostree-1.conf" "$TMPMNT/bootc/entries/ostree-1"
+		BOOTVER=1
 		OTHERVER=1
+		NEXTBOOTVER=1
+		NEXTOTHERVER=1
+		setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
+	elif [ "x$ENTRIES" == "x2" ]; then
+		DIR1=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
+		test $? -eq 0 || exit 1
+		DIR2=$(conf_to_ostree "/boot/loader/entries/ostree-2.conf")
+		test $? -eq 0 || exit 1
+		if [ "$BOOTEDDIR" != "$DIR1" -a "$BOOTEDDIR" != "$DIR2" ]; then
+			echo "Could not find configuration for our current OS" >&2
+			exit 1
+		fi
+		BOOTVER=1
+		OTHERVER=2
+		if [ "$BOOTEDDIR" == "$DIR2" ]; then
+			BOOTVER=2
+			OTHERVER=1
+		fi
+		NEXTBOOTVER="$BOOTVER"
+		NEXTOTHERVER="$OTHERVER"
+		if [ $TRYBOOT -eq 0  -a "$STAGING" == "true" ]; then
+			NEXTBOOTVER="$OTHERVER"
+			NEXTOTHERVER="$BOOTVER"
+		fi
+		if [ "$STAGING" == "true" ]; then
+			rm -rf "$TMPMNT/bootc/entries/ostree-$OTHERVER"
+			mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
+			process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
+		else
+			echo "not staging $BOOTVER $OTHERVER $TRYBOOTVER $TRYOTHERVER"
+		fi
+		setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
 	fi
-	NEXTBOOTVER="$BOOTVER"
-	NEXTOTHERVER="$OTHERVER"
-	if [ $TRYBOOT -eq 0  -a "$STAGING" == "true" ]; then
-		NEXTBOOTVER="$OTHERVER"
-		NEXTOTHERVER="$BOOTVER"
-	fi
-	if [ "$STAGING" == "true" ]; then
-		rm -rf "$TMPMNT/bootc/entries/ostree-$OTHERVER"
-		mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
-		process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
-	else
-		echo "not staging $BOOTVER $OTHERVER $TRYBOOTVER $TRYOTHERVER"
-	fi
-	setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
-fi
+}
+
+# Main command dispatcher
+case "${1:-}" in
+	sync)
+		sync_bootloader
+		;;
+	version)
+		show_version
+		;;
+	help|--help|-h)
+		show_help
+		;;
+	"")
+		echo "Error: No command specified" >&2
+		echo "" >&2
+		show_help 1
+		;;
+	*)
+		echo "Error: Unknown command '$1'" >&2
+		echo "" >&2
+		show_help 1
+		;;
+esac
 
