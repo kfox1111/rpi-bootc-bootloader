@@ -1,0 +1,195 @@
+#!/bin/bash
+
+TMPMNT=/tmp/mnt
+MNTDEV=/dev/nvme0n1p1
+TRYBOOT=0
+WATCHDOG="dtparam=watchdog=on"
+
+mkdir -p $"TMPMNT"
+
+conf_to_ostree() {
+	LOADERFILE="$1"
+	OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
+	OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
+	if [ "x$OSTREE" != "x" ]; then
+		if [ -d "$OSTREE" ]; then
+			OSTREEPATH=$(readlink -f "$OSTREE")
+			echo "$OSTREEPATH"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+process_path() {
+	#FIXME fail on problems.
+	LOADERFILE="$1"
+	LOADERDIR="$2"
+	echo Processing to "$LOADERDIR"
+	OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
+	KERNEL=$(grep '^linux ' "$LOADERFILE" | awk '{print $2}')
+	INITRD=$(grep '^initrd ' "$LOADERFILE" | awk '{print $2}')
+	echo "kernel: $KERNEL"
+	echo "initrd: $INITRD"
+	echo "cmdline: $OPTIONS"
+	OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
+	if [ "x$OSTREE" != "x" ]; then
+		if [ -d "$OSTREE" ]; then
+			OSTREEPATH=$(readlink -f "$OSTREE")
+		fi
+	fi
+	echo "firmware: $FIRMWARE"
+	DTBTREE=$(readlink -f "$OSTREEPATH/usr/share/raspberrypi2-kernel"*/*/boot/)
+	cp "$KERNEL" "$LOADERDIR/vmlinuz"
+	cp "$INITRD" "$LOADERDIR/initrd"
+	echo "$OPTIONS" > "$LOADERDIR/cmdline.txt"
+	echo "dtbtree: $DTBTREE"
+	cp -r "$DTBTREE"/* "$LOADERDIR"
+	BOOTCDIR=/usr/lib/modules/$(ls /usr/lib/modules/ | head -n 1)
+	if [ -f "$BOOTDIR/pi-config.txt" ]; then
+		cp "$BOOTDIR/pi-config.txt" "$LOADERDIR"
+	fi
+}
+
+setup_bootloader() {
+	BOOTVER="$1"
+	OTHERVER="$2"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+[all]
+$WATCHDOG
+include config-bootc-common.txt
+
+[all]
+os_prefix=bootc/entries/ostree-$OTHERVER/
+include bootc/entries/ostree-$OTHERVER/pi-config.txt
+
+[all]
+kernel=vmlinuz
+initramfs initrd followkernel
+EOF
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+[all]
+os_prefix=bootc/entries/ostree-$BOOTVER/
+[gpio6=1]
+include bootc/entries/ostree-$BOOTVER/pi-config.txt
+[all]
+[gpio6=0]
+EOF
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+os_prefix=bootc/entries/ostree-$OTHERVER/
+include bootc/entries/ostree-$OTHERVER/pi-config.txt
+[all]
+EOF
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt"
+#FIXME rename this to just config.txt later
+	if [ ! -f "$TMPMNT/config-bootc-bootorder.txt" ]; then
+		cat > "$TMPMNT/config-bootc-bootorder.txt" <<EOF
+# Do not edit. This is an Automatically generated config file.
+# Put your own customization in your image or config-bootc-common.txt
+
+[all]
+$WATCHDOG
+include config-bootc-common.txt
+[all]
+
+# Default boot entry and button check code.
+include config-bootc-default.txt
+
+# Include only if config-bootc-default.txt is missing OR if the filter
+# [gpio6=0] in config-bootc-default.txt and the fallback button is pressed.
+include config-bootc-fallback.txt
+
+[all]
+kernel=vmlinuz
+initramfs initrd followkernel
+EOF
+	fi
+	if [ ! -f "$TMPMNT/config-bootc-common.txt" ]; then
+		cat > "$TMPMNT/config-bootc-common.txt" <<EOF
+# Put your own settings here.
+EOF
+	fi
+}
+
+ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
+
+if [ "x$ENTRIES" != "x1" -a "x$ENTRIES" != "x2" ]; then
+	echo "Failed to find any entries"
+	exit 1
+fi
+
+STAGING=$(bootc status --format json | jq '.status.staged != null')
+if [ "x$STAGING" != "xtrue" -a "x$STAGING" != "xfalse" ]; then
+	echo Unknown staging state
+	exit 1
+fi
+
+BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
+BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
+if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
+	echo Unknown booted state
+	exit 1
+fi
+if [ ! -d "$BOOTEDDIR" ]; then
+	echo Couldnt find the bootted image dir
+	exit 1
+fi
+
+echo "Entries: $ENTRIES"
+
+cleanup() {
+  EXIT_CODE=$?
+  umount "$TMPMNT" || true
+  exit "$EXIT_CODE"
+}
+
+trap cleanup EXIT
+
+mount "$MNTDEV" "$TMPMNT" || exit 1
+
+mkdir -p "$TMPMNT/bootc/entries"
+if [ "x$ENTRIES" == "x1" ]; then
+	DIR=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
+	test $? -eq 0 || exit 1
+	rm -rf "$TMPMNT/bootc/entries/ostree-1"
+	mkdir -p "RTMPMNT/bootc/entries/ostree-1" || exit 1
+	process_path "/boot/loader/entries/ostree-1.conf" "$TMPMNT/bootc/entries/ostree-1"
+	setup_bootloader || exit 1
+	BOOTVER=1
+	OTHERVER=1
+	NEXTBOOTVER=1
+	NEXTOTHERVER=1
+	setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
+elif [ "x$ENTRIES" == "x2" ]; then
+	DIR1=$(conf_to_ostree "/boot/loader/entries/ostree-1.conf")
+	test $? -eq 0 || exit 1
+	DIR2=$(conf_to_ostree "/boot/loader/entries/ostree-2.conf")
+	test $? -eq 0 || exit 1
+	if [ "$BOOTEDDIR" != "$DIR1" -a "$BOOTEDDIR" != "$DIR2" ]; then
+		echo Could not find config for our current os
+		exit 1
+	fi
+	BOOTVER=1
+	OTHERVER=2
+	if [ "$BOOTEDDIR" == "$DIR2" ]; then
+		BOOTVER=2
+		OTHERVER=1
+	fi
+	NEXTBOOTVER="$BOOTVER"
+	NEXTOTHERVER="$OTHERVER"
+	if [ $TRYBOOT -eq 0  -a "$STAGING" == "true" ]; then
+		NEXTBOOTVER="$OTHERVER"
+		NEXTOTHERVER="$BOOTVER"
+	fi
+	if [ "$STAGING" == "true" ]; then
+		rm -rf "$TMPMNT/bootc/entries/ostree-$OTHERVER"
+		mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
+		process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
+	else
+		echo "not staging $BOOTVER $OTHERVER $TRYBOOTVER $TRYOTHERVER"
+	fi
+	setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
+fi
+
