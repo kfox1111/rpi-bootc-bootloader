@@ -252,7 +252,11 @@ case "${1:-}" in
 		while [ $# -gt 0 ]; do
 			case "$1" in
 				--tryboot)
-					if [ -z "$2" ] || [ "$2" != "0" -a "$2" != "1" ]; then
+					if [ -z "$2" ]; then
+						echo "Error: --tryboot requires argument 0 or 1" >&2
+						exit 1
+					fi
+					if [ "$2" != "0" ] && [ "$2" != "1" ]; then
 						echo "Error: --tryboot requires argument 0 or 1" >&2
 						exit 1
 					fi
@@ -265,14 +269,14 @@ case "${1:-}" in
 					;;
 			esac
 		done
-		
+
 		# Determine TRYBOOT value: CLI flag > config file > default
 		if [ -n "$TRYBOOT_ARG" ]; then
 			TRYBOOT="$TRYBOOT_ARG"
 		else
 			TRYBOOT=$(load_tryboot_config)
 		fi
-		
+
 		sync_bootloader
 		;;
 	version)
