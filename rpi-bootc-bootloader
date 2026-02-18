@@ -1,6 +1,10 @@
 #!/bin/bash
 
 VERSION="v0.0.1"
+TMPMNT=/tmp/mnt
+MNTDEV=/dev/nvme0n1p1
+TRYBOOT=0
+WATCHDOG="dtparam=watchdog=on"
 
 show_help() {
 	cat <<EOF
@@ -20,62 +24,54 @@ show_version() {
 	exit 0
 }
 
-sync_bootloader() {
-	TMPMNT=/tmp/mnt
-	MNTDEV=/dev/nvme0n1p1
-	TRYBOOT=0
-	WATCHDOG="dtparam=watchdog=on"
-
-	mkdir -p "$TMPMNT"
-
-	conf_to_ostree() {
-		LOADERFILE="$1"
-		OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
-		OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
-		if [ "x$OSTREE" != "x" ]; then
-			if [ -d "$OSTREE" ]; then
-				OSTREEPATH=$(readlink -f "$OSTREE")
-				echo "$OSTREEPATH"
-				return 0
-			fi
+conf_to_ostree() {
+	LOADERFILE="$1"
+	OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
+	OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
+	if [ "x$OSTREE" != "x" ]; then
+		if [ -d "$OSTREE" ]; then
+			OSTREEPATH=$(readlink -f "$OSTREE")
+			echo "$OSTREEPATH"
+			return 0
 		fi
-		return 1
-	}
+	fi
+	return 1
+}
 
-	process_path() {
-		#FIXME fail on problems.
-		LOADERFILE="$1"
-		LOADERDIR="$2"
-		echo Processing to "$LOADERDIR"
-		OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
-		KERNEL=$(grep '^linux ' "$LOADERFILE" | awk '{print $2}')
-		INITRD=$(grep '^initrd ' "$LOADERFILE" | awk '{print $2}')
-		echo "kernel: $KERNEL"
-		echo "initrd: $INITRD"
-		echo "cmdline: $OPTIONS"
-		OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
-		if [ "x$OSTREE" != "x" ]; then
-			if [ -d "$OSTREE" ]; then
-				OSTREEPATH=$(readlink -f "$OSTREE")
-			fi
+process_path() {
+	#FIXME fail on problems.
+	LOADERFILE="$1"
+	LOADERDIR="$2"
+	echo Processing to "$LOADERDIR"
+	OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
+	KERNEL=$(grep '^linux ' "$LOADERFILE" | awk '{print $2}')
+	INITRD=$(grep '^initrd ' "$LOADERFILE" | awk '{print $2}')
+	echo "kernel: $KERNEL"
+	echo "initrd: $INITRD"
+	echo "cmdline: $OPTIONS"
+	OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
+	if [ "x$OSTREE" != "x" ]; then
+		if [ -d "$OSTREE" ]; then
+			OSTREEPATH=$(readlink -f "$OSTREE")
 		fi
-		echo "firmware: $FIRMWARE"
-		DTBTREE=$(readlink -f "$OSTREEPATH/usr/share/raspberrypi2-kernel"*/*/boot/)
-		cp "$KERNEL" "$LOADERDIR/vmlinuz"
-		cp "$INITRD" "$LOADERDIR/initrd"
-		echo "$OPTIONS" > "$LOADERDIR/cmdline.txt"
-		echo "dtbtree: $DTBTREE"
-		cp -r "$DTBTREE"/* "$LOADERDIR"
-		BOOTCDIR=/usr/lib/modules/$(ls /usr/lib/modules/ | head -n 1)
-		if [ -f "$BOOTDIR/pi-config.txt" ]; then
-			cp "$BOOTDIR/pi-config.txt" "$LOADERDIR"
-		fi
-	}
+	fi
+	echo "firmware: $FIRMWARE"
+	DTBTREE=$(readlink -f "$OSTREEPATH/usr/share/raspberrypi2-kernel"*/*/boot/)
+	cp "$KERNEL" "$LOADERDIR/vmlinuz"
+	cp "$INITRD" "$LOADERDIR/initrd"
+	echo "$OPTIONS" > "$LOADERDIR/cmdline.txt"
+	echo "dtbtree: $DTBTREE"
+	cp -r "$DTBTREE"/* "$LOADERDIR"
+	BOOTCDIR=/usr/lib/modules/$(ls /usr/lib/modules/ | head -n 1)
+	if [ -f "$BOOTDIR/pi-config.txt" ]; then
+		cp "$BOOTDIR/pi-config.txt" "$LOADERDIR"
+	fi
+}
 
-	setup_bootloader() {
-		BOOTVER="$1"
-		OTHERVER="$2"
-		cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+setup_bootloader() {
+	BOOTVER="$1"
+	OTHERVER="$2"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
 [all]
 $WATCHDOG
 include config-bootc-common.txt
@@ -88,8 +84,8 @@ include bootc/entries/ostree-$OTHERVER/pi-config.txt
 kernel=vmlinuz
 initramfs initrd followkernel
 EOF
-		cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt"
-		cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/tryboot.txt"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
 [all]
 os_prefix=bootc/entries/ostree-$BOOTVER/
 [gpio6=1]
@@ -97,16 +93,16 @@ include bootc/entries/ostree-$BOOTVER/pi-config.txt
 [all]
 [gpio6=0]
 EOF
-		cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt"
-		cat > "$TMPMNT/config-bootc-working.txt" <<EOF
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-default.txt"
+	cat > "$TMPMNT/config-bootc-working.txt" <<EOF
 os_prefix=bootc/entries/ostree-$OTHERVER/
 include bootc/entries/ostree-$OTHERVER/pi-config.txt
 [all]
 EOF
-		cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt"
+	cmp "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt" >/dev/null 2>&1 || mv "$TMPMNT/config-bootc-working.txt" "$TMPMNT/config-bootc-fallback.txt"
 #FIXME rename this to just config.txt later
-		if [ ! -f "$TMPMNT/config-bootc-bootorder.txt" ]; then
-			cat > "$TMPMNT/config-bootc-bootorder.txt" <<EOF
+	if [ ! -f "$TMPMNT/config-bootc-bootorder.txt" ]; then
+		cat > "$TMPMNT/config-bootc-bootorder.txt" <<EOF
 # Do not edit. This is an Automatically generated config file.
 # Put your own customization in your image or config-bootc-common.txt
 
@@ -126,13 +122,16 @@ include config-bootc-fallback.txt
 kernel=vmlinuz
 initramfs initrd followkernel
 EOF
-		fi
-		if [ ! -f "$TMPMNT/config-bootc-common.txt" ]; then
-			cat > "$TMPMNT/config-bootc-common.txt" <<EOF
+	fi
+	if [ ! -f "$TMPMNT/config-bootc-common.txt" ]; then
+		cat > "$TMPMNT/config-bootc-common.txt" <<EOF
 # Put your own settings here.
 EOF
-		fi
-	}
+	fi
+}
+
+sync_bootloader() {
+	mkdir -p "$TMPMNT"
 
 	ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
 
@@ -226,13 +225,13 @@ case "${1:-}" in
 		show_help
 		;;
 	"")
-		echo "Error: No command specified"
-		echo ""
+		echo "Error: No command specified" >&2
+		echo "" >&2
 		show_help
 		;;
 	*)
-		echo "Error: Unknown command '$1'"
-		echo ""
+		echo "Error: Unknown command '$1'" >&2
+		echo "" >&2
 		show_help
 		;;
 esac
