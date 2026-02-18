@@ -136,24 +136,24 @@ sync_bootloader() {
 	ENTRIES=$(ls /boot/loader/entries/ostree-[12].conf | wc -l)
 
 	if [ "x$ENTRIES" != "x1" -a "x$ENTRIES" != "x2" ]; then
-		echo "Failed to find any entries"
+		echo "Failed to find any entries" >&2
 		exit 1
 	fi
 
 	STAGING=$(bootc status --format json | jq '.status.staged != null')
 	if [ "x$STAGING" != "xtrue" -a "x$STAGING" != "xfalse" ]; then
-		echo Unknown staging state
+		echo "Unknown staging state" >&2
 		exit 1
 	fi
 
 	BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
 	BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
 	if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
-		echo Unknown booted state
+		echo "Unknown booted state" >&2
 		exit 1
 	fi
 	if [ ! -d "$BOOTEDDIR" ]; then
-		echo "Couldn't find the booted image dir"
+		echo "Couldn't find the booted image dir" >&2
 		exit 1
 	fi
 
@@ -187,7 +187,7 @@ sync_bootloader() {
 		DIR2=$(conf_to_ostree "/boot/loader/entries/ostree-2.conf")
 		test $? -eq 0 || exit 1
 		if [ "$BOOTEDDIR" != "$DIR1" -a "$BOOTEDDIR" != "$DIR2" ]; then
-			echo Could not find config for our current os
+			echo "Could not find configuration for our current OS" >&2
 			exit 1
 		fi
 		BOOTVER=1
