@@ -7,6 +7,7 @@ TRYBOOT=0
 WATCHDOG="dtparam=watchdog=on"
 
 show_help() {
+	local exit_code="${1:-0}"
 	cat <<EOF
 Usage: rpi-bootc-bootloader <command>
 
@@ -16,7 +17,7 @@ Commands:
   help       Display this help message
 
 EOF
-	exit 0
+	exit "$exit_code"
 }
 
 show_version() {
@@ -227,12 +228,12 @@ case "${1:-}" in
 	"")
 		echo "Error: No command specified" >&2
 		echo "" >&2
-		show_help
+		show_help 1
 		;;
 	*)
 		echo "Error: Unknown command '$1'" >&2
 		echo "" >&2
-		show_help
+		show_help 1
 		;;
 esac
 
