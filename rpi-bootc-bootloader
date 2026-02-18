@@ -2,18 +2,19 @@
 
 VERSION="v0.0.1"
 TMPMNT=/tmp/mnt
-TRYBOOT=0
 WATCHDOG="dtparam=watchdog=on"
 
 show_help() {
 	local exit_code="${1:-0}"
 	cat <<EOF
-Usage: rpi-bootc-bootloader <command>
+Usage: rpi-bootc-bootloader <command> [options]
 
 Commands:
-  sync       Synchronize bootloader configuration with bootc status
-  version    Display version information
-  help       Display this help message
+  sync [--tryboot]        Synchronize bootloader configuration with bootc status
+                          --tryboot: Enable tryboot mode for safer rollback
+                                     Overrides /etc/rpi-bootc-bootloader/tryboot.conf
+  version                 Display version information
+  help                    Display this help message
 
 EOF
 	exit "$exit_code"
@@ -22,6 +23,40 @@ EOF
 show_version() {
 	echo "$VERSION"
 	exit 0
+}
+
+load_tryboot_config() {
+	local config_file="/etc/rpi-bootc-bootloader/tryboot.conf"
+	if [ -f "$config_file" ]; then
+		# Safely read the config file line by line
+		while IFS= read -r line; do
+			# Skip comments and empty lines
+			case "$line" in
+				\#*|'') continue ;;
+			esac
+			# Check if line starts with TRYBOOT=
+			if [ "${line#TRYBOOT=}" != "$line" ]; then
+				# Extract value after TRYBOOT= and strip whitespace
+				local value="${line#TRYBOOT=}"
+				# Simple trim: remove leading/trailing whitespace
+				while [ "${value#[[:space:]]}" != "$value" ]; do
+					value="${value#[[:space:]]}"
+				done
+				while [ "${value%[[:space:]]}" != "$value" ]; do
+					value="${value%[[:space:]]}"
+				done
+				# Strict validation: only accept exactly "0" or "1"
+				if [ "$value" = "0" ] || [ "$value" = "1" ]; then
+					echo "$value"
+					return 0
+				fi
+				# Found TRYBOOT line but invalid value, stop processing
+				break
+			fi
+		done < "$config_file"
+	fi
+	# Return default value
+	echo "0"
 }
 
 conf_to_ostree() {
@@ -228,6 +263,29 @@ sync_bootloader() {
 # Main command dispatcher
 case "${1:-}" in
 	sync)
+		shift  # Remove 'sync' from arguments
+		# Parse --tryboot flag
+		TRYBOOT_ARG=""
+		while [ $# -gt 0 ]; do
+			case "$1" in
+				--tryboot)
+					TRYBOOT_ARG="1"
+					shift
+					;;
+				*)
+					echo "Error: Unknown option '$1'" >&2
+					show_help 1
+					;;
+			esac
+		done
+
+		# Determine TRYBOOT value: CLI flag > config file > default
+		if [ -n "$TRYBOOT_ARG" ]; then
+			TRYBOOT="$TRYBOOT_ARG"
+		else
+			TRYBOOT=$(load_tryboot_config)
+		fi
+
 		sync_bootloader
 		;;
 	version)

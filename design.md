@@ -33,3 +33,31 @@
 
 * User manages config-boot-common.txt and pi-config.txt 
 
+## Tryboot Configuration
+
+The tryboot setting controls how staged updates are handled:
+
+* **TRYBOOT=0** (default): Staged updates are automatically applied on next boot
+* **TRYBOOT=1**: Staged updates use the tryboot mechanism for safer rollback
+
+### Configuration Methods
+
+The tryboot setting can be configured in three ways (in order of precedence):
+
+1. **Command-line flag** (highest priority):
+   ```
+   rpi-bootc-bootloader sync --tryboot    # Enable tryboot mode (TRYBOOT=1)
+   rpi-bootc-bootloader sync              # Use config file or default
+   ```
+
+2. **Configuration file** at `/etc/rpi-bootc-bootloader/tryboot.conf`:
+   ```
+   TRYBOOT=0
+   ```
+   or
+   ```
+   TRYBOOT=1
+   ```
+
+3. **Default value**: If neither the command-line flag nor config file is present, defaults to `TRYBOOT=0`
+
