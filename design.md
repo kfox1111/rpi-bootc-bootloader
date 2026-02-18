@@ -31,7 +31,7 @@
 * config-bootc-default.txt
 * config-bootc-fallback.txt
 
-* User manages config-boot-common.txt and pi-config.txt 
+* User manages config-boot-common.txt and rpi-config.txt 
 
 ## Tryboot Configuration
 
