@@ -28,13 +28,27 @@ show_version() {
 load_tryboot_config() {
 	local config_file="/etc/rpi-bootc-bootloader/tryboot.conf"
 	if [ -f "$config_file" ]; then
-		# Extract TRYBOOT value and validate it contains only 0 or 1
-		local config_tryboot=$(grep '^TRYBOOT=' "$config_file" | head -n 1 | sed 's/^TRYBOOT=//' | tr -d '[:space:]')
-		# Strict validation: only accept exactly "0" or "1"
-		if [ "$config_tryboot" = "0" ] || [ "$config_tryboot" = "1" ]; then
-			echo "$config_tryboot"
-			return 0
-		fi
+		# Safely read the config file line by line
+		while IFS= read -r line; do
+			# Skip comments and empty lines
+			case "$line" in
+				\#*|'') continue ;;
+			esac
+			# Check if line starts with TRYBOOT=
+			if [ "${line#TRYBOOT=}" != "$line" ]; then
+				# Extract value after TRYBOOT=
+				local value="${line#TRYBOOT=}"
+				# Strip whitespace
+				value=$(echo "$value" | tr -d '[:space:]')
+				# Strict validation: only accept exactly "0" or "1"
+				if [ "$value" = "0" ] || [ "$value" = "1" ]; then
+					echo "$value"
+					return 0
+				fi
+				# Found TRYBOOT line but invalid value, stop processing
+				break
+			fi
+		done < "$config_file"
 	fi
 	# Return default value
 	echo "0"
@@ -250,7 +264,7 @@ case "${1:-}" in
 		while [ $# -gt 0 ]; do
 			case "$1" in
 				--tryboot)
-					if [ -z "$2" ] || [ $# -lt 2 ]; then
+					if [ $# -lt 2 ]; then
 						echo "Error: --tryboot requires argument 0 or 1" >&2
 						exit 1
 					fi
