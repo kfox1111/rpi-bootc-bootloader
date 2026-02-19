@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.1"
+VERSION="v0.0.2"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -195,8 +195,13 @@ sync_bootloader() {
 	BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
 	BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
 	if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
-		echo "Unknown booted state" >&2
-		exit 1
+		DETECT=$(ls -d /sysroot/ostree/deploy/default/deploy/*/ 2>/dev/null | wc -l)
+		if [ $? == 0 -a "x$DETECT" == "1" ]; then
+			BOOTEDDIR="$(readlink -f $(ls -d /sysroot/ostree/deploy/default/deploy/*/))"
+		else
+			echo "Unknown booted state" >&2
+			exit 1
+		fi
 	fi
 	if [ ! -d "$BOOTEDDIR" ]; then
 		echo "Couldn't find the booted image dir" >&2
