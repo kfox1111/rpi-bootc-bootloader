@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.2"
+VERSION="v0.0.3"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -196,7 +196,7 @@ sync_bootloader() {
 	BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
 	if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
 		DETECT=$(ls -d /sysroot/ostree/deploy/default/deploy/*/ 2>/dev/null | wc -l)
-		if [ $? == 0 -a "x$DETECT" == "1" ]; then
+		if [ $? == 0 -a "x$DETECT" == "x1" -a "x$ENTRIES" != "x1" ]; then
 			BOOTEDDIR="$(readlink -f $(ls -d /sysroot/ostree/deploy/default/deploy/*/))"
 		else
 			echo "Unknown booted state" >&2
