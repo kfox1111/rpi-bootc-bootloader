@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.4"
+VERSION="v0.0.5"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -13,6 +13,8 @@ Commands:
   sync [--tryboot]        Synchronize bootloader configuration with bootc status
                           --tryboot: Enable tryboot mode for safer rollback
                                      Overrides /etc/rpi-bootc-bootloader/tryboot.conf
+  tryboot                 Set the tryboot flag for the next reboot
+  tryreboot               Set the tryboot flag for the next reboot, and then reboot
   version                 Display version information
   help                    Display this help message
 
@@ -23,6 +25,34 @@ EOF
 show_version() {
 	echo "$VERSION"
 	exit 0
+}
+
+update_file_if_changed() {
+	local TARGET_DIR="$1"
+	local TARGET_NAME="$2"
+	local SOURCE_FULL_PATH="$3"
+
+	local TARGET_FULL_PATH="${TARGET_DIR}/${TARGET_NAME}"
+	local TEMP_FILE="${TARGET_FULL_PATH}.tmp"
+
+	cmp -s "$SOURCE_FULL_PATH" "$TARGET_FULL_PATH"
+	if [ $? -ne 0 ]; then
+		cp "$SOURCE_FULL_PATH" "$TEMP_FILE" || return 1
+		mv "$TEMP_FILE" "$TARGET_FULL_PATH" || return 1
+	fi
+}
+
+sync_dir_with_pattern() {
+	local TARGET_DIR="$1"
+	local SOURCE_PATTERN="$2"
+
+	mkdir -p "$TARGET_DIR"
+
+	for SOURCE_FILE in $SOURCE_PATTERN; do
+		[[ -f "$SOURCE_FILE" ]] || continue
+		local FILENAME=$(basename "$SOURCE_FILE")
+		update_file_if_changed "$TARGET_DIR" "$FILENAME" "$(realpath "$SOURCE_FILE")"
+	done
 }
 
 load_tryboot_config() {
@@ -74,32 +104,43 @@ conf_to_ostree() {
 }
 
 process_path() {
-	#FIXME fail on problems.
-	LOADERFILE="$1"
-	LOADERDIR="$2"
-	echo Processing to "$LOADERDIR"
-	OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //')
-	KERNEL=$(grep '^linux ' "$LOADERFILE" | awk '{print $2}')
-	INITRD=$(grep '^initrd ' "$LOADERFILE" | awk '{print $2}')
-	echo "kernel: $KERNEL"
-	echo "initrd: $INITRD"
-	echo "cmdline: $OPTIONS"
-	OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\)/\1/')
-	if [ "x$OSTREE" != "x" ]; then
-		if [ -d "$OSTREE" ]; then
-			OSTREEPATH=$(readlink -f "$OSTREE")
-		fi
+	local LOADERFILE="$1"
+	local LOADERDIR="$2"
+
+	local OPTIONS=$(grep '^options ' "$LOADERFILE" | sed 's/^options //' || echo "")
+	local KERNEL=$(grep '^linux ' "$LOADERFILE" | awk '{print $2}')
+	local INITRD=$(grep '^initrd ' "$LOADERFILE" | awk '{print $2}')
+
+	[[ -n "$KERNEL" ]] || { echo "Error: No kernel found in $LOADERFILE"; return 1; }
+	[[ -n "$INITRD" ]] || { echo "Error: No initrd found in $LOADERFILE"; return 1; }
+
+	local OSTREE=$(echo "$OPTIONS" | sed 's/.*ostree=\([^ ]*\).*/\1/')
+	local OSTREEPATH=""
+	if [[ -n "$OSTREE" && -d "$OSTREE" ]]; then
+		OSTREEPATH=$(readlink -f "$OSTREE")
 	fi
-	echo "firmware: $FIRMWARE"
-	DTBTREE=$(readlink -f "$OSTREEPATH/usr/share/raspberrypi2-kernel"*/*/boot/)
-	cp "$KERNEL" "$LOADERDIR/vmlinuz"
-	cp "$INITRD" "$LOADERDIR/initrd"
-	echo "$OPTIONS" > "$LOADERDIR/cmdline.txt"
-	echo "dtbtree: $DTBTREE"
-	cp -r "$DTBTREE"/* "$LOADERDIR"
-	BOOTCDIR=/usr/lib/modules/$(ls /usr/lib/modules/ | head -n 1)
-	if [ -f "$BOOTDIR/rpi-config.txt" ]; then
-		cp "$BOOTDIR/rpi-config.txt" "$LOADERDIR"
+
+	update_file_if_changed "$LOADERDIR" "vmlinuz" "$KERNEL" || return 1
+	update_file_if_changed "$LOADERDIR" "initrd" "$INITRD" || return 1
+
+	local TMP_CMDLINE="/tmp/new_cmdline.$$.txt"
+	echo "$OPTIONS" > "$TMP_CMDLINE"
+	update_file_if_changed "$LOADERDIR" "cmdline.txt" "$TMP_CMDLINE"
+	rm -f "$TMP_CMDLINE"
+
+	local DTB_SRC=$(readlink -f "$OSTREEPATH/usr/share/raspberrypi2-kernel"*/*/boot/ 2>/dev/null)
+
+	if [[ -d "$DTB_SRC" ]]; then
+		sync_dir_with_pattern "$LOADERDIR" "$DTB_SRC/*" || return 1
+		mkdir -p "$LOADERDIR/overlays"
+		sync_dir_with_pattern "$LOADERDIR/overlays" "$DTB_SRC/overlays/*" || return 1
+	fi
+
+	local KVER=$(ls /usr/lib/modules/ | head -n 1)
+	local BOOTDIR="/usr/lib/modules/$KVER"
+
+	if [[ -f "$BOOTDIR/rpi-config.txt" ]]; then
+		update_file_if_changed "$LOADERDIR" "rpi-config.txt" "$BOOTDIR/rpi-config.txt" || return 1
 	fi
 }
 
@@ -165,6 +206,10 @@ EOF
 }
 
 sync_bootloader() {
+	BOOTC_STATUS="$1"
+	if [ -z "$BOOTC_STATUS" ]; then
+		BOOTC_STATUS=$(bootc status --format json)
+	fi
 	if [ -z "$MNTDEV" ]; then
 		echo "MNTDEV is not defined. Searching for /sysroot..."
 
@@ -186,13 +231,13 @@ sync_bootloader() {
 		exit 1
 	fi
 
-	STAGING=$(bootc status --format json | jq '.status.staged != null')
+	STAGING=$(echo "$BOOTC_STATUS" | jq '.status.staged != null')
 	if [ "x$STAGING" != "xtrue" -a "x$STAGING" != "xfalse" ]; then
 		echo "Unknown staging state" >&2
 		exit 1
 	fi
 
-	BOOTED=$(bootc status --format json | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
+	BOOTED=$(echo "$BOOTC_STATUS" | jq -r '.status.booted.ostree | .checksum + "." + (.deploySerial | tostring)')
 	BOOTEDDIR="/sysroot/ostree/deploy/default/deploy/$BOOTED"
 	if [ "x$BOOTED" == "x.null" -a "$STAGING" == "false" ]; then
 		DETECT=$(ls -d /sysroot/ostree/deploy/default/deploy/*/ 2>/dev/null | wc -l)
@@ -211,14 +256,23 @@ sync_bootloader() {
 	echo "Entries: $ENTRIES"
 
 	cleanup() {
-	  EXIT_CODE=$?
-	  umount "$TMPMNT" || true
-	  exit "$EXIT_CODE"
+		EXIT_CODE=$?
+		set +x
+		if [[ -n "$BASH_XTRACEFD" ]]; then
+			eval "exec ${BASH_XTRACEFD}>&-"
+			unset BASH_XTRACEFD
+		fi
+		umount "$TMPMNT" || true
+		exit "$EXIT_CODE"
 	}
 
 	trap cleanup EXIT
 
 	mount "$MNTDEV" "$TMPMNT" || exit 1
+
+	exec {TRACE_FD}> "$TMPMNT/rpi-bootc-log.txt"
+	export BASH_XTRACEFD="$TRACE_FD"
+	set -x
 
 	mkdir -p "$TMPMNT/bootc/entries"
 	if [ "x$ENTRIES" == "x1" ]; then
@@ -253,13 +307,9 @@ sync_bootloader() {
 			NEXTBOOTVER="$OTHERVER"
 			NEXTOTHERVER="$BOOTVER"
 		fi
-		if [ "$STAGING" == "true" ]; then
-			rm -rf "$TMPMNT/bootc/entries/ostree-$OTHERVER"
-			mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
-			process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
-		else
-			echo "not staging $BOOTVER $OTHERVER $NEXTBOOTVER $NEXTOTHERVER"
-		fi
+		mkdir -p "$TMPMNT/bootc/entries/ostree-$OTHERVER" || exit 1
+		process_path "/boot/loader/entries/ostree-$BOOTVER.conf" "$TMPMNT/bootc/entries/ostree-$BOOTVER"
+		process_path "/boot/loader/entries/ostree-$OTHERVER.conf" "$TMPMNT/bootc/entries/ostree-$OTHERVER"
 		setup_bootloader "$NEXTBOOTVER" "$NEXTOTHERVER" || exit 1
 	fi
 }
@@ -290,7 +340,40 @@ case "${1:-}" in
 			TRYBOOT=$(load_tryboot_config)
 		fi
 
-		sync_bootloader
+		sync_bootloader ""
+		;;
+        finalize-staged)
+		if [ -z "$MNTDEV" ]; then
+			echo "MNTDEV is not defined. Searching for /sysroot..."
+
+			RAW_DEV=$(mount | awk '$3 == "/sysroot" {print $1}')
+
+			if [ -z "$RAW_DEV" ]; then
+				echo "Error: Could not find a device mounted at /sysroot." >&2
+				exit 1
+			fi
+
+			MNTDEV=$(echo "$RAW_DEV" | sed -E 's/[0-9]+$/1/')
+		fi
+		mount "$MNTDEV" "$TMPMNT" || exit 1
+		RPI_ENABLED=false
+		if [ -f "$TMPMNT/config-bootc-default.txt" ]; then
+			RPI_ENABLED=true
+		fi
+		umount "$TMPMNT"
+		BOOTC_STATUS=$(bootc status --format json)
+	        /usr/bin/ostree admin finalize-staged
+		#FIXME double check etc is available here.
+		TRYBOOT=$(load_tryboot_config)
+		if [ "$RPI_ENABLED" == "true" ]; then
+			sync_bootloader "$BOOTC_STATUS"
+		fi
+		;;
+	tryboot)
+		vcmailbox 0x00038064 4 4 1
+		;;
+	tryreboot)
+		vcmailbox 0x00038064 4 4 1 && reboot
 		;;
 	version)
 		show_version
