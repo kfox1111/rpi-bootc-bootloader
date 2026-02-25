@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.5"
+VERSION="v0.0.6"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -355,6 +355,7 @@ case "${1:-}" in
 
 			MNTDEV=$(echo "$RAW_DEV" | sed -E 's/[0-9]+$/1/')
 		fi
+		mkdir -p "$TMPMNT"
 		mount "$MNTDEV" "$TMPMNT" || exit 1
 		RPI_ENABLED=false
 		if [ -f "$TMPMNT/config-bootc-default.txt" ]; then
