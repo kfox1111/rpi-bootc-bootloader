@@ -10,17 +10,17 @@ This project enables bootc based images to be booted on Raspberry Pi based hardw
 
 ### Usage
 
-Run `rpi-bootc-bootloader sync` after every `bootc switch` or `bootc update`.
-
-Warning: For now, do not use the --apply flag or the updating cronjob as it could leave the bootloader in the wrong state.
+Run `bootc switch` or `bootc update` as normal
 
 Tryboot:
 
-The tryboot feature is enabled with the `--tryboot` flag, or writing `TRYBOOT=1` to `/etc/rpi-bootc-bootloader/tryboot.conf`
+The tryboot feature is enabled with writing `TRYBOOT=1` to `/etc/rpi-bootc-bootloader/tryboot.conf`
 
-When syncing in tryboot mode, the PI will stay configured to boot the current image. When executing `reboot tryboot`
+Switch image as normal, but without apply. When ready to apply, run `rpi-bootc-bootloader tryreboot`
 
 This will cause the RPI to boot the currently staging bootc image on the next boot. Failure to boot or a power cycle should return it automatically to the current, working image.
+
+Once the boot is successful and you are happy with it, run `rpi-bootc-bootloader sync` to update the default to the current image.
 
 ### Circuit
 
