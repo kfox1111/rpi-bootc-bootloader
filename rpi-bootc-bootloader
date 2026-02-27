@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.6"
+VERSION="v0.0.7"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -136,8 +136,8 @@ process_path() {
 		sync_dir_with_pattern "$LOADERDIR/overlays" "$DTB_SRC/overlays/*" || return 1
 	fi
 
-	local KVER=$(ls /usr/lib/modules/ | head -n 1)
-	local BOOTDIR="/usr/lib/modules/$KVER"
+	local KVER=$(ls "$OSTREEPATH/usr/lib/modules/" | head -n 1)
+	local BOOTDIR="$OSTREEPATH/usr/lib/modules/$KVER"
 
 	if [[ -f "$BOOTDIR/rpi-config.txt" ]]; then
 		update_file_if_changed "$LOADERDIR" "rpi-config.txt" "$BOOTDIR/rpi-config.txt" || return 1
