@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="v0.0.7"
+VERSION="v0.0.8"
 TMPMNT=/tmp/mnt
 WATCHDOG="dtparam=watchdog=on"
 
@@ -182,6 +182,7 @@ EOF
 # Put your own customization in your image or config-bootc-common.txt
 
 [all]
+arm_64bit=1
 $WATCHDOG
 include config-bootc-common.txt
 [all]
