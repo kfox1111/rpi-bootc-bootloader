@@ -2,7 +2,7 @@
 
 This project enables bootc based images to be booted on Raspberry Pi based hardware to boot bootc based OSes without needing UEFI chainloaders.
 
-![RPI5 with BOOTC Switch](images/final-pi.jpg)
+![RPI5 with BOOTC Switch](images/final-pi5.jpg)
 
 ### Why
 
