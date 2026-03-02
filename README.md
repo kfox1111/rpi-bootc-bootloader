@@ -2,6 +2,8 @@
 
 This project enables bootc based images to be booted on Raspberry Pi based hardware to boot bootc based OSes without needing UEFI chainloaders.
 
+![RPI5 with BOOTC Switch](images/final-pi.jpg)
+
 ### Why
 
 * The chainloaders don't usually have support for proper devicetree initialization on the pi's without someone self assembling single devicetree files from the overlays for specific boards making them hard to support.
