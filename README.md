@@ -45,3 +45,6 @@ Start with the front plate:
 Measure ~0.5 inches from the top and from the closest usb cutout. Drill a 12mm hole centered at that point.
 ![Plate with Hole](images/platehole.jpg)
 
+Add optional mounting rail if you want to rack mount it, fit the button through the hole and secure with the nut that comes with the button:
+![Plate with Button](images/platebutton.jpg)
+
