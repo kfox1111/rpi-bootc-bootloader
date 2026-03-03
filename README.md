@@ -29,3 +29,19 @@ Once the boot is successful and you are happy with it, run `rpi-bootc-bootloader
 To support manually selecting the previous image to boot, we need to add a push button to the RPI header. Connect it to GPIO pin 6 (PI header pin 31), and ground, easiest is PI header pin 39. No resisters are needed.
 
 To fall back to the previous image, simply hold in the button while booting.
+
+### Example case
+
+Grab a case like:
+* https://www.amazon.com/dp/B0DB5WJQYC
+* https://www.amazon.com/dp/B0D97VK1VW
+
+And a 12mm button like:
+* https://www.amazon.com/dp/B0BC1BF3RK
+
+Start with the front plate:
+![Plate](images/plate.jpg)
+
+Measure ~0.5 inches from the top and from the closest usb cutout. Drill a 12mm hole centered at that point.
+![Plate with Hole](images/platehole.jpg)
+
