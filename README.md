@@ -1,6 +1,6 @@
 ## Raspberry Pi bootloader for bootc
 
-This project enables bootc based images to be booted on Raspberry Pi based hardware to boot bootc based OSes without needing UEFI chainloaders.
+This project enables bootc based images to be booted on Raspberry Pi based hardware without needing UEFI chainloaders.
 
 ![RPI5 with BOOTC Switch](images/final-pi5.jpg)
 
@@ -24,11 +24,21 @@ This will cause the RPI to boot the currently staging bootc image on the next bo
 
 Once the boot is successful and you are happy with it, run `rpi-bootc-bootloader sync` to update the default to the current image.
 
-### Circuit
+### Simple Circuit
 
 To support manually selecting the previous image to boot, we need to add a push button to the RPI header. Connect it to GPIO pin 6 (PI header pin 31), and ground, easiest is PI header pin 39. No resisters are needed.
 
 To fall back to the previous image, simply hold in the button while booting.
+
+### BMC Circuit
+
+There is a work in progress project in the works to support using a RPI Zero 2 W as a BMC for a RPI5.
+
+This includes:
+* Remote serial console access
+* Remote bootc mode switching
+* Remote power control
+* Some communication between the host and BMC without using USB ports
 
 ### Example case
 
